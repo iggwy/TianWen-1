@@ -381,3 +381,45 @@ def webbugs_filenames():
 
 # 调用函数
 webbugs_filenames()
+def download_TW1MOMAG_USTC(Time_range, save_dir):
+    """
+    下载天问一号 MOMAG 1Hz 数据（USTC）。
+    :param Time_range: 起止时间（格式如 ["2020-08-30T00:00:00.000", "2024-09-01T00:00:00.000"]）
+    :param save_dir: 数据保存路径
+    """
+    os.makedirs(save_dir, exist_ok=True)
+
+    start = datetime.strptime(Time_range[0], "%Y-%m-%dT%H:%M:%S.%f")
+    end = datetime.strptime(Time_range[1], "%Y-%m-%dT%H:%M:%S.%f")
+    delta = timedelta(days=1)
+
+    base_url = "https://space.ustc.edu.cn/dreams/tw1_momag/fetch.php?datafile=TW1_MOMAG_MSO_01Hz_{}_2C_v03.dat"
+
+    current = start
+    while current <= end:
+        ymd_str = current.strftime("%Y%m%d")
+        filename = f"TW1_MOMAG_MSO_01Hz_{ymd_str}_2C_v03.dat"
+        url = base_url.format(ymd_str)
+        local_path = os.path.join(save_dir, filename)
+
+        if os.path.exists(local_path):
+            print(f"已存在，跳过：{filename}")
+        else:
+            try:
+                response = requests.get(url, timeout=30)
+                if response.status_code == 200 and b"DOCTYPE" not in response.content[:100]:
+                    with open(local_path, 'wb') as f:
+                        f.write(response.content)
+                    print(f"✅ 成功下载：{filename}")
+                else:
+                    print(f"⚠️ 无数据或链接无效：{filename}")
+            except Exception as e:
+                print(f"❌ 下载失败 {filename}: {e}")
+
+        current += delta
+
+# 示例调用
+download_TW1MOMAG_USTC(
+    Time_range=["2021-11-16T00:00:00.000", "2024-03-31T00:00:00.000"],
+    save_dir="TIANWEN1_Data/MOMAG/1Hz_USTC/"
+)
