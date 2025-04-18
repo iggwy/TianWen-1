@@ -7,6 +7,6 @@ Current functions include crawling all the magnetic field data file names of Tia
 另一种方式是利用download_TW1MOMAG_USTC()函数在https://space.ustc.edu.cn/dreams/tw1_momag/?magdata=cal下载1Hz或32Hz数据。当然，第一种下载数据方法可以扩展，下载TIANWEN-1其他仪器的数据。
 For magnetic field data, download includes two kinds of ways, the first is a download at https://moon.bao.ac.cn/web/zhmanager/kxsj?missionName=HX1&zhName=MOMAG&grade=2C, the need to climb take cookies, The download_TW1_data() function can be used to download 1Hz or 32Hz data. Another way is to use download_TW1MOMAG_USTC()Function in the https://space.ustc.edu.cn/dreams/tw1_momag/?magdata=cal download 1 hz or 32 hz data. Of course, the first method of downloading data can be extended to download data from other instruments of TIANWEN-1.
 
-#2025/4/18 
+# 2025/4/18 
 The current functionalities available in **Tianwen1_MAVEN_GUI** include:
 Downloading TianWen-1 magnetic field data, downloading MAVEN magnetic field and plasma data, and an interactive interface.
