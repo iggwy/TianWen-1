@@ -1,5 +1,9 @@
 import time
-
+import sys
+import spacepy.pycdf
+import pyspedas
+import pyspedas
+sys.setrecursionlimit(2000)
 import matplotlib
 from tqdm import tqdm
 import csv
@@ -12,16 +16,22 @@ import numpy as np
 import pandas as pd
 import os
 import pds4_tools
-
-
+import gc
+import matplotlib.pyplot as plt
+from matplotlib.dates import num2date
+from requests.exceptions import RequestException
+import os
+import pandas as pd
+import numpy as np
+import xml.etree.ElementTree as ET
+from tqdm import tqdm
+import re
+import cdflib
 
 HZ_USTC_ = "TIANWEN1_Data/MOMAG/1Hz_USTC/"
 current_path = os.path.abspath(__file__)
 # Get the path to the folder where the current script file resides
 MARs_data_folder = os.path.dirname(current_path)
-
-
-
 def download_TW1_data(instru='M0MAG', accur='32Hz', Time_range=None):
     """
     下载指定 Hz MOMAG 数据文件。
@@ -32,9 +42,52 @@ def download_TW1_data(instru='M0MAG', accur='32Hz', Time_range=None):
       TXT_FILE = "TW1_MOMAG_filename&id.txt"
       SAVE_DIR = f"TIANWEN1_Data/MOMAG/{accur}/"
       GITHUB_URL = "https://raw.githubusercontent.com/iggwy/Python_YangWang/main/Mars/TianWen-1/TW1_MOMAG_filename&id.txt"
+      # HTTP headers with cookie for authentication
+      HEADERS = {
+          "accept": "application/json, text/javascript, */*; q=0.01",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB-oxendict;q=0.7,en-GB;q=0.6,en-US;q=0.5",
+          "connection": "keep-alive",
+          "content-length": "30",
+          "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "host": "moon.bao.ac.cn",
+          "origin": "https://moon.bao.ac.cn",
+          "referer": "https://moon.bao.ac.cn/web/zhmanager/kxsj?missionName=HX1&zhName=MOMAG&grade=2C",
+          "sec-ch-ua": '"Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": '"Windows"',
+          "sec-fetch-dest": "empty",
+          "sec-fetch-mode": "cors",
+          "sec-fetch-site": "same-origin",
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
+          "x-requested-with": "XMLHttpRequest",
+      }
     if instru=='MINPA':
       TXT_FILE = "TW1_MINPA_filename&id.txt"
-    # 2C 下载链接模板
+      SAVE_DIR =f"TIANWEN1_Data/MINPA/"
+      HEADERS = {
+          "accept": "application/json, text/javascript, */*; q=0.01",
+          "accept-encoding": "gzip, deflate, br, zstd",
+          "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB-oxendict;q=0.7,en-GB;q=0.6,en-US;q=0.5",
+          "connection": "keep-alive",
+          "content-length": "30",
+          "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "host": "moon.bao.ac.cn",
+          "origin": "https://moon.bao.ac.cn",
+          "referer": "https://moon.bao.ac.cn/web/zhmanager/kxsj?missionName=HX1&zhName=MINPA&grade=2B",
+          "sec-ch-ua": '"Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": '"Windows"',
+          "sec-fetch-dest": "empty",
+          "sec-fetch-mode": "cors",
+          "sec-fetch-site": "same-origin",
+          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
+          "x-requested-with": "XMLHttpRequest",
+
+      }
+      # 2C 下载链接模板
+
+
     BASE_URL_2C = (
         "https://moon.bao.ac.cn/web/zhmanager/kxsj"
         "?p_p_id=scientificdata_WAR_ScientificDataportlet"
@@ -42,7 +95,6 @@ def download_TW1_data(instru='M0MAG', accur='32Hz', Time_range=None):
         "&p_p_cacheability=cacheLevelPage&p_p_col_id=column-1"
         "&p_p_col_count=1&p_p_resource_id=download&id={id_2c}&flagCol=SP&name={name_2c}"
     )
-
     # 2CL 下载链接模板
     BASE_URL_2CL = (
         "https://moon.bao.ac.cn/web/zhmanager/kxsj"
@@ -62,26 +114,9 @@ def download_TW1_data(instru='M0MAG', accur='32Hz', Time_range=None):
         "&p_p_resource_id=download&id={id_2cl}&flagCol=SPL&name={name_2cl}"
     )
 
-    # HTTP headers with cookie for authentication
-    HEADERS = {
-        "accept": "application/json, text/javascript, */*; q=0.01",
-        "accept-encoding": "gzip, deflate, br, zstd",
-        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB-oxendict;q=0.7,en-GB;q=0.6,en-US;q=0.5",
-        "connection": "keep-alive",
-        "content-length": "30",
-        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "host": "moon.bao.ac.cn",
-        "origin": "https://moon.bao.ac.cn",
-        "referer": "https://moon.bao.ac.cn/web/zhmanager/kxsj?missionName=HX1&zhName=MOMAG&grade=2C",
-        "sec-ch-ua": '"Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-        "sec-ch-ua-mobile": "?0",
-        "sec-ch-ua-platform": '"Windows"',
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
-        "x-requested-with": "XMLHttpRequest",
-    }
+
+
+
 
     def login_and_get_cookies(username, password):
         import os
@@ -113,6 +148,30 @@ def download_TW1_data(instru='M0MAG', accur='32Hz', Time_range=None):
                 "sec-fetch-site": "same-origin",
                 "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
                 "x-requested-with": "XMLHttpRequest",
+            }
+        if instru=='MINPA':
+            COOKIE_FILE = "cookies_MINPA.txt"  # cookies文件，如果不存在或cookies内容失效将会通过登录自动下载
+            TEST_URL = "https://moon.bao.ac.cn/web/zhmanager/kxsj?missionName=HX1&zhName=MINPA&grade=2B"
+            # HTTP headers with cookie for authentication
+            HEADERS = {
+                "accept": "application/json, text/javascript, */*; q=0.01",
+                "accept-encoding": "gzip, deflate, br, zstd",
+                "accept-language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB-oxendict;q=0.7,en-GB;q=0.6,en-US;q=0.5",
+                "connection": "keep-alive",
+                "content-length": "30",
+                "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "host": "moon.bao.ac.cn",
+                "origin": "https://moon.bao.ac.cn",
+                "referer": "https://moon.bao.ac.cn/web/zhmanager/kxsj?missionName=HX1&zhName=MINPA&grade=2B",
+                "sec-ch-ua": '"Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+                "sec-fetch-dest": "empty",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-site": "same-origin",
+                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
+                "x-requested-with": "XMLHttpRequest",
+
             }
 
         # === 保存 cookies 为 TXT 文件 ===
@@ -257,7 +316,11 @@ def download_TW1_data(instru='M0MAG', accur='32Hz', Time_range=None):
                 filenames_and_ids.append((parts[0], parts[1]))
 
     # 过滤指定 Hz 数据
-    filtered_files = [(filename, file_id) for filename, file_id in filenames_and_ids if accur in filename]
+    if instru=='MOMAG':
+      filtered_files = [(filename, file_id) for filename, file_id in filenames_and_ids if accur in filename]
+
+    if instru=='MINPA':
+      filtered_files = [(filename, file_id) for filename, file_id in filenames_and_ids]
 
     # 按时间范围筛选数据
     if Time_range:
@@ -280,8 +343,9 @@ def download_TW1_data(instru='M0MAG', accur='32Hz', Time_range=None):
         filtered_files = [(filename, file_id) for filename, file_id in filtered_files if is_within_time_range(filename)]
 
     # 下载文件
-    start_index = 3792  # Python 是 0-based 索引，所以 3792 表示第 3793 个文件
-    for filename, file_id in tqdm(filtered_files[start_index:], desc=f"Downloading {accur} Files"):
+    print(filtered_files)
+    start_index = 0  # Python 是 0-based 索引，所以 3792 表示第 3793 个文件
+    for filename, file_id in tqdm(filtered_files[start_index:], desc=f"Downloading {instru} Files"):
         # 处理文件...
         start_index =  start_index +1
         print(start_index)
@@ -328,9 +392,6 @@ def doy_to_date(year, day_of_year):
     return target_date.strftime('%Y-%m-%d')
 
 
-
-
-
 import os
 import requests
 from datetime import datetime, timedelta
@@ -343,6 +404,12 @@ def download_maven_data( time_range,instru, accur="1sec"):
     if instru=='KP':
       base_url="https://search-pdsppi.igpp.ucla.edu/ditdos/download?id=pds://PPI/maven.insitu.calibrated/data"
       save_folder = f"MAVEN_Data/KP"
+    if instru=='SWIA':
+      base_url="https://search-pdsppi.igpp.ucla.edu/ditdos/viewFile?id=pds://PPI/maven.swia.calibrated/data/onboard_svy_spec"
+      save_folder = f"MAVEN_Data/SWIA"
+    if instru=='SWIA_MOM':
+        base_url = "https://search-pdsppi.igpp.ucla.edu/ditdos/download?id=pds://PPI/maven.swia.calibrated/data/onboard_svy_mom"
+        save_folder = f"MAVEN_Data/SWIA_MOM"
     # 创建保存目录
     os.makedirs(save_folder, exist_ok=True)
 
@@ -378,11 +445,32 @@ def download_maven_data( time_range,instru, accur="1sec"):
             xml_url = f"{base_url}/{accur}/{year}/{month}/{prefix}.xml"
             sts_path = os.path.join(save_folder, f"{prefix}.sts")
             xml_path = os.path.join(save_folder, f"{prefix}.xml")
+            if accur=='highres':
+                prefix = f"mvn_mag_l2_{year}{doy}pc_{yyyymmdd}_v01_r01"
+                sts_url = f"{base_url}/{accur}/{year}/{month}/{prefix}.sts"
+                xml_url = f"{base_url}/{accur}/{year}/{month}/{prefix}.xml"
+                sts_path = os.path.join(save_folder, f"{prefix}.sts")
+                xml_path = os.path.join(save_folder, f"{prefix}.xml")
+
         if instru=='KP':
             prefix = f"mvn_kp_insitu_{yyyymmdd}_v22_r01"
             sts_url = f"{base_url}/{year}/{month}/{prefix}.tab"
             xml_url = f"{base_url}/{year}/{month}/{prefix}.xml"
             sts_path = os.path.join(save_folder, f"{prefix}.tab")
+            xml_path = os.path.join(save_folder, f"{prefix}.xml")
+
+        if instru=='SWIA':
+            prefix = f"mvn_swi_l2_onboardsvyspec_{yyyymmdd}_v02_r01"
+            sts_url = f"{base_url}/{year}/{month}/{prefix}.cdf"
+            xml_url = f"{base_url}/{year}/{month}/{prefix}.xml"
+            sts_path = os.path.join(save_folder, f"{prefix}.cdf")
+            xml_path = os.path.join(save_folder, f"{prefix}.xml")
+
+        if instru=='SWIA_MOM':
+            prefix = f"mvn_swi_l2_onboardsvymom_{yyyymmdd}_v02_r01"
+            sts_url = f"{base_url}/{year}/{month}/{prefix}.cdf"
+            xml_url = f"{base_url}/{year}/{month}/{prefix}.xml"
+            sts_path = os.path.join(save_folder, f"{prefix}.cdf")
             xml_path = os.path.join(save_folder, f"{prefix}.xml")
         # 下载 .sts 文件
         if not os.path.exists(sts_path):
@@ -409,9 +497,7 @@ def download_maven_data( time_range,instru, accur="1sec"):
             print(f"⏩ 已存在：{prefix}.sts，跳过")
 
         date += timedelta(days=1)
-
 #def plot_
-
 def webbugs_filenames(instru='MINPA'):
 
     #爬取网页上的文件名和对应的ID，筛选包含 'HX1-Or_GRAS_MOMAG-DB-1Hz' 或 'HX1-Or_GRAS_MOMAG-DB-32Hz' 的文件，
@@ -496,43 +582,69 @@ def webbugs_filenames(instru='MINPA'):
 
             time.sleep(1)  # 避免请求过快被封禁
             print(f"\n总共爬取到 {total_files} 个文件名和 ID，已保存在 {txt_filename} 中")
-def download_TW1MOMAG_USTC(Time_range, save_dir,accur):
+def download_TW1MOMAG_USTC(Time_range, save_dir, accur='01Hz', version='v03', max_retries=3):
     """
-    下载天问一号 MOMAG 1Hz 数据（USTC）。
+    下载天问一号 MOMAG 数据（USTC）。
     :param Time_range: 起止时间（格式如 ["2020-08-30T00:00:00.000", "2024-09-01T00:00:00.000"]）
     :param save_dir: 数据保存路径
+    :param accur: 数据精度（'01Hz' 或 '32Hz'）
+    :param version: 数据版本字符串（如 'v03r01'）
+    :param max_retries: 最大重试次数
     """
     os.makedirs(save_dir, exist_ok=True)
 
     start = datetime.strptime(Time_range[0], "%Y-%m-%dT%H:%M:%S.%f")
     end = datetime.strptime(Time_range[1], "%Y-%m-%dT%H:%M:%S.%f")
     delta = timedelta(days=1)
-
-    base_url = f"https://space.ustc.edu.cn/dreams/tw1_momag/fetch.php?datafile=TW1_MOMAG_MSO_{accur}" + "_{}_2C_v03.dat"
     current = start
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
     while current <= end:
         ymd_str = current.strftime("%Y%m%d")
-        filename = f"TW1_MOMAG_MSO_{accur}_{ymd_str}_2C_v03.dat"
-        url = base_url.format(ymd_str)
+        filename = f"TW1_MOMAG_MSO_{accur}_{ymd_str}_2C_{version}.dat"
+        url = f"https://space.ustc.edu.cn/dreams/tw1_momag/fetch.php?datafile={filename}"
         local_path = os.path.join(save_dir, filename)
 
         if os.path.exists(local_path):
-            print(f"已存在，跳过：{filename}")
-        else:
+            print(f"🟡 已存在，跳过：{filename}")
+            current += delta
+            continue
+
+        success = False
+        for attempt in range(1, max_retries + 1):
             try:
-                response = requests.get(url, timeout=30)
-                content_text = response.text.strip()
-                # 检查是否为网页错误提示
-                if "Sorry, the data you request does not exist!" in content_text:
-                    print(f"⚠️ 无数据（网页返回提示）：{filename}")
-                elif response.status_code == 200:
+                with requests.get(url, headers=headers, stream=True, timeout=60) as response:
+                    if response.status_code != 200:
+                        print(f"⚠️ 状态码 {response.status_code}，跳过：{filename}")
+                        break
+
                     with open(local_path, 'wb') as f:
-                        f.write(response.content)
-                    print(f"✅ 成功下载：{filename}")
-                else:
-                    print(f"⚠️ 非 200 状态码，跳过：{filename}")
-            except Exception as e:
-                print(f"❌ 下载失败 {filename}: {e}")
+                        for chunk in response.iter_content(chunk_size=1024 * 1024):
+                            if chunk:
+                                f.write(chunk)
+
+                # 下载完成后检查是否是网页错误提示内容
+                try:
+                    with open(local_path, 'rb') as f_check:
+                        head = f_check.read(1024).decode(errors='ignore')
+                    if "Sorry, the data you request does not exist!" in head:
+                        print(f"⚠️ 网页提示无数据，{filename}")
+                        break
+                except Exception as check_err:
+                    print(f"⚠️ 文件检查失败：{filename}: {check_err}")
+
+                print(f"✅ 成功下载：{filename}")
+                success = True
+                break  # 成功，退出重试循环
+
+            except RequestException as e:
+                print(f"❌ 下载失败（第 {attempt} 次）：{filename}: {e}")
+                if attempt == max_retries:
+                    print(f"❌ 达到最大重试次数，跳过：{filename}")
+
         current += delta
 def Read_TW1_data(instru,Time_range,accur='01Hz'):
     if instru=='MOMAG':
@@ -607,7 +719,184 @@ def Read_TW1_data(instru,Time_range,accur='01Hz'):
             MAG = MAG[mask]
 
         return MAG
-    #if instru=='kp':
+    if instru=='MINPA':
+        folder = f"TIANWEN1_Data/MINPA/"
+        os.makedirs(folder, exist_ok=True)
+
+        # 转换时间范围
+        start_time = datetime.strptime(Time_range[0], "%Y-%m-%dT%H:%M:%S.%f")
+        end_time = datetime.strptime(Time_range[1], "%Y-%m-%dT%H:%M:%S.%f")
+        # ============== 查找匹配文件 ==============
+        matched_files = []
+
+        # 遍历文件夹下所有文件
+        for fname in os.listdir(folder):
+            # 可选：只匹配后缀 .2B
+            if not fname.endswith(".2B"):
+                continue
+
+            parts = fname.split('_')
+            if len(parts) < 7:
+                continue  # 防止格式异常
+
+            start_str = parts[5]
+            end_str = parts[6]
+
+            try:
+                file_start = datetime.strptime(start_str, "%Y%m%d%H%M%S")
+                file_end = datetime.strptime(end_str, "%Y%m%d%H%M%S")
+            except ValueError:
+                continue  # 防止解析失败
+
+            # 判断是否有交集
+            if file_end >= start_time and file_start <= end_time:
+                matched_files.append(fname)
+
+        def read_2B_file(folder,tab_file, start_time, end_time):
+            """
+            读取一个 .2B 文件及其对应的标签文件 (.2BL)
+            返回： DataFrame, 能道求和数组列表
+            """
+
+            def get_mod_number(fname):
+                m = re.search(r"-MOD(\d+)-", fname)
+                if m:
+                    return int(m.group(1))
+                return None
+
+
+            # 模式号映射到列名
+            def select_energy_column(mode):
+                if mode in [1, 2]:
+                    return "1_2"
+                elif mode in [3, 4, 5, 7, 8]:
+                    return "3_4_5_7_8"
+                elif mode == 6:
+                    return "6"
+                elif mode in [9, 10, 11]:
+                    return "9_10_11"
+                elif mode == 12:
+                    return "12"
+                else:
+                    return None
+
+            mode = get_mod_number(tab_file)
+            col_name = select_energy_column(mode)
+            # 读CSV
+            df = pd.read_excel("G:\SpaceScience\Mars\MINPA_ENERGY.xlsx")
+            if col_name and col_name in df.columns:
+                # 丢掉空白 NaN
+                energy_arr = df[col_name].dropna().values
+                print(f"模式号: {mode}")
+                print(f"列名: {col_name}")
+               # print(f"能量表: {energy_arr}")
+            else:
+                print(f"模式 {mode} 找不到匹配列")
+            tab_file=folder+tab_file
+
+            # 自动生成 label 文件名
+            if tab_file.endswith(".2B"):
+                label_file = tab_file + "L"
+            else:
+                raise ValueError(f"文件名格式不对：{tab_file}")
+
+            # 1. 解析 XML 标签
+            tree = ET.parse(label_file)
+            root = tree.getroot()
+            ns = {'pds': 'http://pds.nasa.gov/pds4/pds/v1'}
+
+            record_length = int(root.find('.//pds:record_length', ns).text)
+            n_records = int(root.find('.//pds:records', ns).text)
+            print(f"[{os.path.basename(tab_file)}] 记录长度: {record_length}, 记录数量: {n_records}")
+
+            # 2. 字段定义
+            fields = [
+                ('UTC', 1, 27, 's'),
+                ('Instruction_Count', 29, 5, 'i'),
+                ('Scanning_Table_Address', 35, 6, 's'),
+                ('Quality_Group_Lookup_Table_Address', 42, 6, 'h'),
+                ('Ion_Quality_Group_Count', 56, 3, 'i'),
+                ('Ion_Azimuth_Count', 60, 3, 'i'),
+                ('Ion_Pitch_Count', 64, 3, 'i'),
+                ('Ion_Energy_Step_Count', 68, 3, 'i'),
+                ('Quality', 456, 4, 's'),
+            ]
+
+            def parse_ion_count_array(rec, n_energy, n_pitch, n_azimuth, n_quality):
+                start = 497 - 1
+                length = n_energy * n_pitch * n_azimuth * n_quality * 8
+                raw = rec[start:start + length]
+
+                ion_values = []
+                for i in range(n_energy * n_pitch * n_azimuth * n_quality):
+                    s = raw[i * 8:(i + 1) * 8].decode('ascii', errors='ignore').strip()
+                    try:
+                        val = int(float(s)) if s else 0
+                    except:
+                        val = 0
+                    ion_values.append(val)
+
+                arr = np.array(ion_values).reshape((n_energy, n_pitch, n_azimuth, n_quality))
+                return arr
+
+            rows = []
+            counts = []
+            utc = []  # <<< 新增
+            energy_table = []
+
+            with open(tab_file, 'rb') as f:
+                for i in tqdm(range(n_records), desc=f"解析 {os.path.basename(tab_file)}"):
+                    rec = f.read(record_length)
+                    if len(rec) < record_length:
+                        raise ValueError(f"第 {i + 1} 条记录长度不足")
+
+                    row = {}
+                    for name, loc, length, dtype in fields:
+                        txt = rec[loc - 1:loc - 1 + length].decode('ascii', errors='ignore').strip()
+                        if dtype == 'i':
+                            try:
+                                row[name] = int(txt)
+                            except:
+                                row[name] = int(float(txt)) if txt else 0
+                        elif dtype == 'f':
+                            row[name] = float(txt) if txt else 0
+                        else:
+                            row[name] = txt
+                    rows.append(row)
+                    utc_str = row['UTC']
+                    try:
+                        utc_time = datetime.strptime(utc_str, "%Y-%m-%dT%H:%M:%S.%fZ")
+                    except ValueError:
+                        utc_time = datetime.strptime(utc_str, "%Y-%m-%dT%H:%M:%S")
+
+                    if not (start_time <= utc_time <= end_time):
+                        continue  # 不在时间范围，跳过
+
+                    n_energy = row.get('Ion_Energy_Step_Count', 0)
+                    n_pitch = row.get('Ion_Pitch_Count', 0)
+                    n_azimuth = row.get('Ion_Azimuth_Count', 0)
+                    n_quality = row.get('Ion_Quality_Group_Count', 0)
+
+                    if n_energy > 0 and n_pitch > 0 and n_azimuth > 0 and n_quality > 0:
+                        arr_4d = parse_ion_count_array(rec, n_energy, n_pitch, n_azimuth, n_quality)
+                        arr_3d = arr_4d[:, :, :, 3]  # 这里默认取第4个 quality group
+                        summed = arr_3d.sum(axis=(1, 2))  # shape=(n_energy,)
+                        counts.append(summed)
+                        utc.append(utc_str)
+                        energy_table.append(energy_arr)
+
+            df = pd.DataFrame(rows)
+            spectra_array = np.stack(counts)
+            utc_array = np.array(utc)
+            energy_table=np.array(energy_table)
+            return spectra_array,utc_array,energy_table
+
+        all_records = []
+        for f in matched_files:
+            spectra, utcs, energy_table= read_2B_file(folder,f, start_time, end_time)
+            for s, t ,e in zip(spectra, utcs,energy_table):
+                all_records.append({'UTC': t, 'Spectrum': s,'Energy':e})
+        return all_records
 def Read_MAVEN_data(instru,time_range, time_resolution='1s'):
     if instru=='MAG':
         """
@@ -626,11 +915,13 @@ def Read_MAVEN_data(instru,time_range, time_resolution='1s'):
 
         # 2. 生成文件夹路径
         base_folder = os.path.join(os.getcwd(), "MAVEN_Data", "MAG", time_resolution + 'ec')
-
+        if time_resolution=='highres':
+            base_folder = os.path.join(os.getcwd(), "MAVEN_Data", "MAG", time_resolution)
         # 3. 匹配文件名中不同精度的代码
         resolution_code = {
             '1s': 'pc1s',
-            '4s': 'pc4s'
+            '4s': 'pc4s',
+            'highres':'pc'
         }.get(time_resolution, 'pc1s')  # 默认使用 pc1s
 
         current_dt = start_dt.date()
@@ -693,7 +984,7 @@ def Read_MAVEN_data(instru,time_range, time_resolution='1s'):
                     print(f"读取 {xml_path} 出错: {e}")
             else:
                 print(f"文件不存在: {xml_path}")
-                download_maven_data(time_range, instru, accur="1sec")
+                download_maven_data(time_range, instru, accur=time_resolution)
             current_dt += timedelta(days=1)
 
         # 转换为 numpy 数组
@@ -735,6 +1026,11 @@ def Read_MAVEN_data(instru,time_range, time_resolution='1s'):
             'KP_X':[],
             'KP_Y': [],
             'KP_Z': [],
+            'B_X': [],
+            'B_Y': [],
+            'B_Z': [],
+            'SEP':[]
+
         }
 
         while current_dt <= end_date:
@@ -767,6 +1063,10 @@ def Read_MAVEN_data(instru,time_range, time_resolution='1s'):
                         KP_X = KP_data['SPICE:Spacecraft MSO X'][mask]
                         KP_Y = KP_data['SPICE:Spacecraft MSO Y'][mask]
                         KP_Z = KP_data['SPICE:Spacecraft MSO Z'][mask]
+                        B_X = KP_data['MAG:Magnetic Field MSO X'][mask]
+                        B_Y = KP_data['MAG:Magnetic Field MSO Y'][mask]
+                        B_Z = KP_data['MAG:Magnetic Field MSO Z'][mask]
+                        SEP =  KP_data['SWEA:Solar wind electron density'][mask]
 
 
                         all_data['UTC'].extend(times_str)
@@ -779,6 +1079,10 @@ def Read_MAVEN_data(instru,time_range, time_resolution='1s'):
                         all_data['KP_X'].extend(KP_X)
                         all_data['KP_Y'].extend(KP_Y)
                         all_data['KP_Z'].extend(KP_Z)
+                        all_data['B_X'].extend(B_X)
+                        all_data['B_Y'].extend(B_Y)
+                        all_data['B_Z'].extend(B_Z)
+                        all_data['SEP'].extend(SEP)
                 except Exception as e:
                     print(f"读取 {xml_path} 出错: {e}")
             else:
@@ -789,9 +1093,155 @@ def Read_MAVEN_data(instru,time_range, time_resolution='1s'):
         for key in all_data:
             all_data[key] = np.array(all_data[key])
         return all_data
+    if instru=='SWIA':
+        # 1. 解析时间范围
+        start_time, end_time = time_range
+        start_dt = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S.%f")
+        end_dt = datetime.strptime(end_time, "%Y-%m-%dT%H:%M:%S.%f")
+        start_dt64 = np.datetime64(start_dt)
+        end_dt64 = np.datetime64(end_dt)
+        # 2. 生成文件夹路径
+        base_folder = os.path.join(os.getcwd(), "MAVEN_Data", "SWIA")
+        current_dt = start_dt#.date()
+        end_date = end_dt#.date()
+
+        all_data = {
+            'UTC': [],
+            'energy': [],
+            'diff_en': []
+        }
+
+        while current_dt <= end_date:
+            y, m, d = current_dt.year, current_dt.month, current_dt.day
+            xml_name = f"mvn_swi_l2_onboardsvyspec_{y}{m:02d}{d:02d}_v02_r01.xml"
+            cdf_name = f"mvn_swi_l2_onboardsvyspec_{y}{m:02d}{d:02d}_v02_r01.cdf"
+            xml_path = os.path.join(base_folder, xml_name)
+            cdf_path = os.path.join(base_folder, cdf_name)
+            if os.path.exists(xml_path):
+                    cdf_file = cdflib.CDF(cdf_path)
+                     # 获取变量
+                    epoch = cdf_file['epoch']
+                    flux = cdf_file['spectra_diff_en_fluxes']
+
+                    # 直接用名字取各个 ArrayStructure，然后 .data 得到numpy数组
+                    epoch_vals = cdf_file['epoch']  # TT2000 (ns)
+                    print("Min epoch:", np.min(epoch_vals))
+                    print("Max epoch:", np.max(epoch_vals))
+                    flux_vals = cdf_file['spectra_diff_en_fluxes']  # (N, M)
+                    energy_vals = cdf_file['energy_spectra']  # (M,) 或 (N, M)
+
+                    # TT2000转datetime
+                    times = cdflib.cdfepoch.to_datetime(epoch_vals)
+                    print(times)
+                    mask = (times >= start_dt64) & (times <= end_dt64)
+
+                    if np.any(mask):
+                        # 时间字符串
+                        masked_times = times[mask]
+                        times_dt = pd.to_datetime(masked_times).to_pydatetime()  # 转成 Python datetime 数组
+                        times_str = np.array([dt.strftime("%Y-%m-%dT%H:%M:%S.%f") for dt in times_dt])
+                        print('有数据')
+                        # 差分能量通量
+                        selected_flux = flux_vals[mask, :]  # shape: (N_selected, M)
+
+                        # 能量谱（如果是1维，tile成二维；如果是二维直接mask）
+                        if energy_vals.ndim == 1:
+                            selected_energy = np.tile(energy_vals, (mask.sum(), 1))
+                        else:
+                            selected_energy = energy_vals[mask, :]
+
+                        # 存结果
+                        all_data['UTC'].extend(times_str.tolist())  # datetime→字符串→列表
+                        all_data['energy'].extend(selected_energy.tolist())  # 2D→列表
+                        all_data['diff_en'].extend(selected_flux.tolist())  # 2D→列表
+                        print(times_str.shape)
+                        print(selected_energy.shape)
+                        print(np.max(selected_flux))
+
+            else:
+                print(f"文件不存在: {xml_path}")
+                download_maven_data(time_range,instru='SWIA')
+            current_dt += timedelta(days=1)
+        # 转换为 numpy 数组
+        for key in all_data:
+            all_data[key] = np.array(all_data[key])
+        return all_data
+    if instru=='SWIA_MOM':
+        # 1. 解析时间范围
+        start_time, end_time = time_range
+        start_dt = datetime.strptime(start_time, "%Y-%m-%dT%H:%M:%S.%f")
+        end_dt = datetime.strptime(end_time, "%Y-%m-%dT%H:%M:%S.%f")
+        start_dt64 = np.datetime64(start_dt)
+        end_dt64 = np.datetime64(end_dt)
+        # 2. 生成文件夹路径
+        base_folder = os.path.join(os.getcwd(), "MAVEN_Data", "SWIA_MOM")
+        current_dt = start_dt  # .date()
+        end_date = end_dt  # .date()
+
+        all_data = {
+            'UTC': [],
+            'N': [],
+            'T': [],
+            'V': []
+        }
+
+        while current_dt <= end_date:
+            y, m, d = current_dt.year, current_dt.month, current_dt.day
+            xml_name = f"mvn_swi_l2_onboardsvymom_{y}{m:02d}{d:02d}_v02_r01.xml"
+            cdf_name = f"mvn_swi_l2_onboardsvymom_{y}{m:02d}{d:02d}_v02_r01.cdf"
+            xml_path = os.path.join(base_folder, xml_name)
+            cdf_path = os.path.join(base_folder, cdf_name)
+            if os.path.exists(xml_path):
+                cdf_file = cdflib.CDF(cdf_path)
 
 
-time_range_index=1050
+                # 直接用名字取各个 ArrayStructure，然后 .data 得到numpy数组
+                epoch_vals = cdf_file['epoch']  # TT2000 (ns)
+                print("Min epoch:", np.min(epoch_vals))
+                print("Max epoch:", np.max(epoch_vals))
+                N_vals = cdf_file['density']  # (N, M)
+                V_vals = cdf_file['velocity_mso']  # (M,) 或 (N, M)
+                T_mso_vals = cdf_file['temperature_mso']  # (M,) 或 (N, M)
+                # 在 axis=1 上取平均，得到 (21600,) 一维数组
+                T_mso_mean = np.mean(T_mso_vals, axis=1)
+                print('T_mso_vals shape:', T_mso_vals.shape)
+                print('velocity_mso shape:', V_vals.shape)
+                print('N_vals shape:', N_vals.shape)
+
+                # TT2000转datetime
+                times = cdflib.cdfepoch.to_datetime(epoch_vals)
+                print(times.shape)
+                mask = (times >= start_dt64) & (times <= end_dt64)
+
+                if np.any(mask):
+                    # 时间字符串
+                    masked_times = times[mask]
+                    times_dt = pd.to_datetime(masked_times).to_pydatetime()  # 转成 Python datetime 数组
+                    print(len(times_dt))
+                    times_str = np.array([dt.strftime("%Y-%m-%dT%H:%M:%S.%f") for dt in times_dt])
+                    print('有数据')
+                    # 差分能量通量
+                    selected_N = N_vals[mask]  # shape: (N_selected, M)
+                    selected_V = V_vals[mask,:]  # shape: (N_selected, M)
+                    selected_T = T_mso_mean[mask]  # shape: (N_selected, M)
+                    print("N的形状：",selected_N.shape)
+                    print(len(times_str), len(selected_N), selected_V.shape, len(selected_T))
+                    # 存结果
+                    all_data['UTC'].extend(times_str)  # datetime→字符串→列表
+                    all_data['N'].extend(selected_N)  # 2D→列表
+                    all_data['V'].extend(selected_V.tolist())  # 2D→列表
+                    all_data['T'].extend(selected_T)  # 2D→列表
+
+            else:
+                print(f"文件不存在: {xml_path}")
+                download_maven_data(time_range, instru='SWIA_MOM')
+            current_dt += timedelta(days=1)
+        # 转换为 numpy 数组
+        for key in all_data:
+            all_data[key] = np.array(all_data[key])
+        return all_data
+
+time_range_index=1859#5207#5207# 5207
 def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
     #—---------获取数据及时间范围
     global time_range_index
@@ -844,8 +1294,8 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
     else:
         current_time_range = zoom_range
     print( current_time_range )
-    TW1_MAG = Read_TW1_data('MOMAG',  current_time_range , accur='01Hz')
-    if TW1_MAG is None:
+    TW1_MAG = Read_TW1_data('MOMAG',  current_time_range , accur='32Hz')
+    if TW1_MAG is None or TW1_MAG['UTC'].size==0 :
         print("No data returned.")
         time_range_index = time_range_index + 1
         TW1_MAVEN_GUI(Time_range=None, step_days=1/6)
@@ -859,20 +1309,6 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
     if np.mean(np.sqrt(TW1_X**2+TW1_Y**2+TW1_Z**2) )>30 :
         TW1_X, TW1_Y, TW1_Z = TW1_MAG['X']/3390, TW1_MAG['Y']/3390, TW1_MAG['Z']/3390
     #---读取maven数据
-    MVMAG = Read_MAVEN_data(instru='MAG', time_range=current_time_range,time_resolution='1s')
-    if MVMAG is None:
-        print("No data returned.")
-        time_range_index = time_range_index + 1
-        TW1_MAVEN_GUI(Time_range=None, step_days=1/6)
-    MVMAG_Time=[datetime.strptime(t.rstrip('Z'), "%Y-%m-%dT%H:%M:%S.%f") for t in MVMAG['UTC']]
-    MVMAG_Time = np.array(MVMAG_Time)
-    MVMAG_Bx, MVMAG_By, MVMAG_Bz = MVMAG['Bx'], MVMAG['By'], MVMAG['Bz']
-    MVMAG_Bt = np.sqrt(MVMAG_Bx**2 + MVMAG_By**2 + MVMAG_Bz**2)
-    MVMAG_X, MVMAG_Y, MVMAG_Z = MVMAG['X']/3390, MVMAG['Y']/3390, MVMAG['Z']/3390
-
-
-
-
     MVKP=Read_MAVEN_data(instru='KP', time_range=current_time_range)
     if MVKP is None:
         print("No data returned.")
@@ -882,8 +1318,31 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
     MVKP_Hn=MVKP['H_n']
     MVKP_HT=MVKP['H_T']
     MVKP_HV = np.sqrt(MVKP['H_Vx']**2 + MVKP['H_Vy']**2 + MVKP['H_Vz']**2)
-    MVKP_nLPW=MVKP['n_LPW']
+    MVKP_nLPW=MVKP['SEP']
+
     KP_dis=np.sqrt(MVKP['KP_X']**2 + MVKP['KP_Y']**2 + MVKP['KP_Z']**2)-3396
+
+
+    MVMAG = Read_MAVEN_data(instru='MAG', time_range=current_time_range,time_resolution='highres')
+    if MVMAG is None:
+        print("No data returned.")
+        MVMAG_Time = MVKP_Time
+        MVMAG_Bx, MVMAG_By, MVMAG_Bz = MVKP['B_X'], MVKP['B_Y'], MVKP['B_Z']
+        MVMAG_Bt = np.sqrt(MVMAG_Bx ** 2 + MVMAG_By ** 2 + MVMAG_Bz ** 2)
+        MVMAG_X, MVMAG_Y, MVMAG_Z = MVKP['KP_X'] / 3390, MVKP['KP_X'] / 3390, MVKP['KP_X'] / 3390
+    else:
+        MVMAG_Time = [datetime.strptime(t.rstrip('Z'), "%Y-%m-%dT%H:%M:%S.%f") for t in MVMAG['UTC']]
+        MVMAG_Time = np.array(MVMAG_Time)
+        MVMAG_Bx, MVMAG_By, MVMAG_Bz = MVMAG['Bx'], MVMAG['By'], MVMAG['Bz']
+        MVMAG_Bt = np.sqrt(MVMAG_Bx ** 2 + MVMAG_By ** 2 + MVMAG_Bz ** 2)
+        MVMAG_X, MVMAG_Y, MVMAG_Z = MVMAG['X'] / 3390, MVMAG['Y'] / 3390, MVMAG['Z'] / 3390
+
+
+
+
+
+
+
 
 
     # —---------绘制界面------------------------------------
@@ -902,7 +1361,7 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
    # 创建图形和子图
     fig = plt.figure(figsize=(4, 4), dpi=100)
     # 第一个子图
-    ax1 = fig.add_axes([0.05, 0.85, 0.6, 0.1])  # [left, bottom, width, height]
+    ax1 = fig.add_axes([0.05, 0.88, 0.6, 0.1])  # [left, bottom, width, height]
     ax1.plot(TW1_Time, TW1_Bt, 'black', linewidth=1)
     ax1.set_ylabel('Bt', fontsize=12)
     ax1.get_xaxis().set_visible(False)
@@ -916,8 +1375,9 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
     ax1.text(0.01, 0.95, 'TianWen-1', transform=ax1.transAxes,
              fontsize=17, verticalalignment='top')
     ax1.set_xlim(TW1_Time[0], TW1_Time[-1])
-    ax1.tick_params(axis='y', labelsize=4)
 
+    ax1.tick_params(axis='y', labelsize=4)
+    ax1.set_ylim(0, 40)
 
     # 第二个子图
     ax2 = fig.add_axes([0.05, 0.75, 0.6, 0.1])  # [left, bottom, width, height]
@@ -926,6 +1386,7 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
     ax2.plot(TW1_Time, TW1_Bz, linewidth=1, label='Bz', color='blue')
     ax2.get_xaxis().set_visible(False)
     ax2.set_xlim(TW1_Time[0], TW1_Time[-1])
+    ax2.set_ylim(-25, 25)
     ax2.text(-0.05, 0.75, r'$\mathrm{B_{X}}$', color='red', transform=ax2.transAxes, ha='center', va='center',
              fontsize=12)
     ax2.text(-0.05, 0.5, r'$\mathrm{B_{Y}}$', color='green', transform=ax2.transAxes, ha='center', va='center',
@@ -935,8 +1396,8 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
 
     # 第三个子图 - XY 轨迹图
     ax3 = fig.add_axes([0.7, 0.7, 0.25, 0.25])  # [left, bottom, width, height] 右上角正方形
-    ax3.plot(TW1_X, TW1_Z, color='darkblue', linewidth=1, label='TianWen-1')
-    ax3.plot(MVMAG_X, MVMAG_Z, color='darkgreen', linewidth=1, label='MAVEN')  # 新增 MAVEN轨迹
+    XZ_tw1, = ax3.plot(TW1_X, TW1_Z, color='darkblue', linewidth=1, label='TianWen-1')
+    XZ_mvmag, = ax3.plot(MVMAG_X, MVMAG_Z, color='darkgreen', linewidth=1, label='MAVEN')  # 新增 MAVEN轨迹
     ax3.set_xlabel('X [$R_M$]')
     ax3.set_ylabel('Z [$R_M$]')
     ax3.set_xlim(-5, 5)
@@ -977,8 +1438,8 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
 
     # 第四个子图 - YZ 轨迹图
     ax4 = fig.add_axes([0.7, 0.4, 0.25, 0.25])  # 右下角正方形
-    ax4.plot(TW1_X, TW1_Y, color='darkblue', linewidth=1, label='TianWen-1')
-    ax4.plot(MVMAG_X, MVMAG_Y, color='darkgreen', linewidth=1,  label='MAVEN')  # 新增 MAVEN轨迹
+    XY_tw1, = ax4.plot(TW1_X, TW1_Y, color='darkblue', label='TianWen‑1')
+    XY_mvmag, = ax4.plot(MVMAG_X, MVMAG_Y, color='darkgreen', label='MAVEN')
     ax4.set_xlabel('X [$R_M$]')
     ax4.set_ylabel('Y [$R_M$]')
     ax4.set_xlim(-5, 5)
@@ -1027,7 +1488,7 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
     ax5.text(0.01, 0.95, 'MAVEN', transform=ax5.transAxes,
              fontsize=17, verticalalignment='top')
     ax5.set_xlim(TW1_Time[0], TW1_Time[-1])
-    ax5.set_ylim(0, 25)
+    ax5.set_ylim(0, 40)
 
 
 
@@ -1039,7 +1500,7 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
     ax6.plot(MVMAG_Time,MVMAG_Bz, linewidth=1, label='Bz',color='blue')
     ax6.get_xaxis().set_visible(False)
     ax6.set_xlim(TW1_Time[0], TW1_Time[-1])
-    ax6.set_ylim(-30, 30)
+    ax6.set_ylim(-25, 25)
     ax6.text(-0.05, 0.75, r'$\mathrm{B_{X}}$', color='red', transform=ax2.transAxes, ha='center', va='center',
              fontsize=12)
     ax6.text(-0.05, 0.5, r'$\mathrm{B_{Y}}$', color='green', transform=ax2.transAxes, ha='center', va='center',
@@ -1073,7 +1534,7 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
     ax10 = fig.add_axes([0.05, 0.15, 0.6, 0.1])  # [left, bottom, width, height]
     ax10.plot(MVKP_Time,MVKP_nLPW, 'black', linewidth=1)
     # 设置横轴格式为 'HH:mm'
-    ax10.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+    ax10.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
     ax10.set_ylabel(r'e$^-$ density', fontsize=12)
     ax10.set_xlim(TW1_Time[0], TW1_Time[-1])
 
@@ -1107,8 +1568,8 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
 
     # 第四个子图 - YZ 轨迹图
     ax11 = fig.add_axes([0.7, 0.35-0.125, 0.25, 0.125])  # 右下角正方形
-    ax11.plot(TW1_X, np.sqrt(TW1_Y**2+TW1_Z**2), color='darkblue', linewidth=1, label='TianWen-1')
-    ax11.plot(MVMAG_X, np.sqrt(MVMAG_Y**2+MVMAG_Z**2), color='darkgreen', linewidth=1, label='MAVEN')  # 新增 MAVEN轨迹
+    XYZ_tw1, = ax11.plot(TW1_X, np.sqrt(TW1_Y**2+TW1_Z**2), color='darkblue', linewidth=1, label='TianWen-1')
+    XYZ_mvmag, = ax11.plot(MVMAG_X, np.sqrt(MVMAG_Y**2+MVMAG_Z**2), color='darkgreen', linewidth=1, label='MAVEN')  # 新增 MAVEN轨迹
     ax11.set_xlabel('X [$R_M$]')
     ax11.set_ylabel('YZ [$R_M$]')
     ax11.set_xlim(-5, 5)
@@ -1278,6 +1739,9 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
             bx_range = TW1_Bx[time_range]
             by_range = TW1_By[time_range]
             bz_range = TW1_Bz[time_range]
+            XY_tw1.set_data(TW1_X[time_range], TW1_Y[time_range])
+            XZ_tw1.set_data(TW1_X[time_range], TW1_Z[time_range])
+            XYZ_tw1.set_data(TW1_X[time_range], np.sqrt(TW1_Y[time_range]**2+TW1_Z[time_range]**2))
             ax1.set_xlim(x_min, x_max)
             ax2.set_xlim(x_min, x_max)
             ax5.set_xlim(x_min, x_max)
@@ -1286,13 +1750,40 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
             ax8.set_xlim(x_min, x_max)
             ax9.set_xlim(x_min, x_max)
             ax10.set_xlim(x_min, x_max)
-            ax1.set_ylim(min(bt_range), max(bt_range))
-            ax2.set_ylim(min(np.concatenate([bx_range, by_range, bz_range])),
-                         max(np.concatenate([bx_range, by_range, bz_range])))
+            ax1.set_ylim(np.nanmin(bt_range), np.nanmax(bt_range))
+            ax2.set_ylim(np.nanmin(np.concatenate([bx_range, by_range, bz_range])),
+                         np.nanmax(np.concatenate([bx_range, by_range, bz_range])))
             time_range = (MVMAG_Time >= x_min) & (MVMAG_Time <= x_max)
+            bt_range = MVMAG_Bt[time_range]
             bx_range = MVMAG_Bx[time_range]
             by_range = MVMAG_By[time_range]
             bz_range = MVMAG_Bz[time_range]
+            XY_mvmag.set_data(MVMAG_X[time_range], MVMAG_Y[time_range])
+            XZ_mvmag.set_data(MVMAG_X[time_range], MVMAG_Z[time_range])
+            XYZ_mvmag.set_data(MVMAG_X[time_range], np.sqrt(MVMAG_Y[time_range]**2+MVMAG_Z[time_range]**2))
+            if bt_range.any():
+                ax5.set_ylim(min(bt_range), max(bt_range))
+                ax6.set_ylim(min(np.concatenate([bx_range, by_range, bz_range])),
+                             max(np.concatenate([bx_range, by_range, bz_range])))
+            else:
+                print("警告：bt_range 为空，跳过 ylim 设置")
+
+
+            print("MVKP_Time type:", type(MVKP_Time))
+            print("x_min type:", type(x_min))
+            print("MVKP_Time[0] type:", type(MVKP_Time[0]))
+            x_min = np.datetime64(x_min)
+            x_max = np.datetime64(x_max)
+            time_range = (MVKP_Time >= x_min) & (MVKP_Time <= x_max)
+
+
+            MV_n=MVKP_Hn[time_range]
+            MV_T = MVKP_HT[time_range]
+            MV_V = MVKP_HV[time_range]
+            ax7.set_ylim(min(MV_n), max(MV_n))
+            ax8.set_ylim(min(MV_T), max(MV_T))
+            ax9.set_ylim(min(MV_V), max(MV_V))
+
 
             # ✅ 更新图10下方距离坐标轴 ax10_bottom
             xticks = ax10.get_xticks()
@@ -1324,10 +1815,28 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
         ax8.set_xlim(TW1_Time[0], TW1_Time[-1])
         ax9.set_xlim(TW1_Time[0], TW1_Time[-1])
         ax10.set_xlim(TW1_Time[0], TW1_Time[-1])
+        XY_tw1.set_data(TW1_X, TW1_Y)
+        XY_mvmag.set_data(MVMAG_X, MVMAG_Y)
+        XZ_tw1.set_data(TW1_X, TW1_Y)
+        XZ_mvmag.set_data(MVMAG_X, MVMAG_Y)
+        XYZ_tw1.set_data(TW1_X,np.sqrt(TW1_Y**2+TW1_Z**2))
+        XYZ_mvmag.set_data(MVMAG_X, np.sqrt(MVMAG_Y**2+MVMAG_Z**2))
 
         ax1.set_ylim(min(TW1_Bt), max(TW1_Bt))
         ax2.set_ylim(min([min(TW1_Bx), min(TW1_By), min(TW1_Bz)]),
                      max([max(TW1_Bx), max(TW1_By), max(TW1_Bz)]))
+        if MVMAG_Bt.any():
+            ax5.set_ylim(min(MVMAG_Bt), max(MVMAG_Bt))
+            ax6.set_ylim(min([min(MVMAG_Bx), min(MVMAG_By), min(MVMAG_Bz)]),
+                         max([max(MVMAG_Bx), max(MVMAG_By), max(MVMAG_Bz)]))
+        else:
+            print("警告：MVMAG_Bt 为空，跳过 ylim 设置")
+
+        ax7.set_ylim(np.nanmin(MVKP_Hn), np.nanmax(MVKP_Hn))
+
+        ax8.set_ylim(np.nanmin(MVKP_HT), np.nanmax(MVKP_HT))
+        ax9.set_ylim(np.nanmin(MVKP_HV), np.nanmax(MVKP_HV))
+
         nonlocal can_insert_line
         can_insert_line = True
         clear_lines()
@@ -1364,7 +1873,10 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
         if time_range_index >= 0 :
             time_range_index += 1
             print(time_range_index)
-            root.destroy()
+            canvas.get_tk_widget().destroy()  # 删除嵌入窗口中的画布
+            root.update_idletasks()  # 更新所有挂起的事件
+            root.update()  # 强制 GUI 更新，释放可能未关闭的 widget
+            root.destroy()  # 确保销毁窗口
             TW1_MAVEN_GUI(Time_range=None)
         # Save the figure as an image to the "G:/picture" folder
 
@@ -1377,9 +1889,8 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
         fig.savefig(save_path, dpi=130)
         print(f"Plot saved to {save_path}")
 
-        # 清理并关闭当前图形对象，释放内存
-        plt.clf()  # 清空当前图形
-        plt.close()  # 关闭当前图形，释放内存
+        plt.close('all')  # 关闭所有图像窗口
+        gc.collect()  # 强制进行垃圾回收
 
         # Add the save image button
     next_button = ttk.Button(button_frame, text="Next/下一张", command=next_plot)
@@ -1418,23 +1929,23 @@ def TW1_MAVEN_GUI(Time_range=None, step_days=1/6):
         next_plot()
 
     # 使用更长的延迟确保渲染完成
-    root.after(100, auto_save)  # 3秒后执行
+    #root.after(500, auto_save)  # 3秒后执行
     check_marked()
     root.mainloop()
     root.destroy()
 
-TW1_MAVEN_GUI(Time_range=None)#["2024-05-18T00:00:00.000", "2024-05-19T00:00:00.000"]
+#TW1_MAVEN_GUI(Time_range=["2024-04-01T20:00:00.000", "2024-04-01T22:40:00.000"])#["2024-05-18T00:00:00.000", "2024-05-19T00:00:00.000"]Time_range=["2024-05-18T01:20:00.000", "2024-05-18T15:00:00.000"]["2024-04-01T21:20:00.000", "2024-04-01T21:40:00.000"]
 # 示例调用
-# download_TW1MOMAG_USTC(
-    #Time_range=["2021-11-16T00:00:00.000", "2024-03-31T00:00:00.000"],
-# save_dir='\TIANWEN1_Data\MOMAG/01Hz_USTC')
+#download_TW1MOMAG_USTC(Time_range=["2024-03-31T00:00:00.000","2024-11-29T00:00:00.000"],save_dir='G:\SpaceScience\Mars\TIANWEN1_Data\MOMAG/01Hz_USTC',accur='01Hz',version='v03')
 
 # download_maven_data(["2021-11-01","2024-03-31"],instru='KP')
-
+download_TW1_data(instru='MINPA', Time_range=["2022-09-23T21:12:14.000", "2022-09-23T22:07:30.000"])#["2021-11-16T20:30:00.000", "2021-11-16T21:30:00.000"]
 
 
 
 # data=Read_MAVEN_data(instru='MAG',time_range=["2022-11-18T23:03:00.000", "2022-11-19T01:05:00.000"], time_resolution='1s')
 
 # 调用函数
-#webbugs_filenames()
+#webbugs_filenames()["2022-10-15T11:20:00.000", "2022-10-15T12:30:00.000"]
+#data=Read_MAVEN_data(instru='SWIA_MOM', time_range=["2024-04-01T20:20:59.000", "2024-04-01T20:23:31.000"])
+#print(data['T'])
